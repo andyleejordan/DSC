@@ -146,9 +146,15 @@ pub struct Configuration {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variables: Option<Map<String, Value>>,
     pub imports: Option<Map<String, Value>>,
-    pub resources: Vec<Resource>,
+    pub resources: ResourcesType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+pub enum ResourcesType {
+    Array(Vec<Resource>),
+    Object(Map<String, Resource>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
@@ -343,7 +349,7 @@ impl Configuration {
             content_version: Some("1.0.0".to_string()),
             metadata: None,
             parameters: None,
-            resources: Vec::new(),
+            resources: ResourcesType::Array(Vec::new()),
             functions: None,
             variables: None,
             imports: None,
