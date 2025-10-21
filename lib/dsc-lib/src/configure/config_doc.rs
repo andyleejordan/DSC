@@ -135,6 +135,8 @@ pub struct Configuration {
     #[serde(rename = "$schema")]
     #[schemars(schema_with = "Configuration::recognized_schema_uris_subschema")]
     pub schema: String,
+    #[serde(rename = "languageVersion")]
+    pub language_version: Option<String>,
     #[serde(rename = "contentVersion")]
     pub content_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -143,6 +145,7 @@ pub struct Configuration {
     pub parameters: Option<HashMap<String, Parameter>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variables: Option<Map<String, Value>>,
+    pub imports: Option<Map<String, Value>>,
     pub resources: Vec<Resource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
@@ -336,12 +339,14 @@ impl Configuration {
     pub fn new() -> Self {
         Self {
             schema: Self::default_schema_id_uri(),
+            language_version: None,
             content_version: Some("1.0.0".to_string()),
             metadata: None,
             parameters: None,
             resources: Vec::new(),
             functions: None,
             variables: None,
+            imports: None,
         }
     }
 }
