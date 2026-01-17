@@ -6,13 +6,14 @@ use dsc_lib::{
     configure::config_doc::ExecutionKind,
     discovery::discovery_trait::DiscoveryFilter,
     dscresources::{
-        dscresource::Invoke,
+        dscresource::{DscResource, Invoke},
         invoke_result::{GetResult, SetResult},
     },
     DscManager,
 };
 use rust_i18n::{i18n, t};
-use std::{env, io, process};
+use std::{env, io, process, sync::Arc};
+use tokio::sync::RwLock;
 use tonic::{transport::Server, Request, Response, Status};
 
 // Include the generated protobuf code
@@ -29,8 +30,29 @@ use proto::{
 
 i18n!("locales", fallback = "en-us");
 
-#[derive(Debug, Default)]
-pub struct BicepExtensionService;
+#[derive(Clone)]
+// Tonic clones the service for each request so we need an Atomic Reference
+// Counter and a lock around the DscManager singleton.
+pub struct BicepExtensionService {
+    dsc_manager: Arc<RwLock<DscManager>>,
+}
+
+impl BicepExtensionService {
+    async fn find_resource(
+        &self,
+        resource_type: &str,
+        version: Option<&str>,
+    ) -> Option<DscResource> {
+        // Technically we've already discovered all the resources so this could
+        // be a read() lock, but the library isn't designed for that.
+        let mut dsc = self.dsc_manager.write().await;
+        // We're cloning the DscResource which is cheap to do in order not to
+        // reinitialize or clone the DscManager.
+        dsc.find_resource(&DiscoveryFilter::new(resource_type, version, None))
+            .unwrap_or(None)
+            .cloned()
+    }
+}
 
 #[tonic::async_trait]
 impl BicepExtension for BicepExtensionService {
@@ -54,15 +76,7 @@ impl BicepExtension for BicepExtensionService {
             )
         );
 
-        let mut dsc = DscManager::new();
-        let Some(resource) = dsc
-            .find_resource(&DiscoveryFilter::new(
-                &resource_type,
-                version.as_deref(),
-                None,
-            ))
-            .unwrap_or(None)
-        else {
+        let Some(resource) = self.find_resource(&resource_type, version.as_deref()).await else {
             return Err(Status::not_found(
                 t!("dscerror.resourceNotFound").to_string(),
             ));
@@ -109,15 +123,7 @@ impl BicepExtension for BicepExtensionService {
             )
         );
 
-        let mut dsc = DscManager::new();
-        let Some(resource) = dsc
-            .find_resource(&DiscoveryFilter::new(
-                &resource_type,
-                version.as_deref(),
-                None,
-            ))
-            .unwrap_or(None)
-        else {
+        let Some(resource) = self.find_resource(&resource_type, version.as_deref()).await else {
             return Err(Status::not_found(
                 t!("dscerror.resourceNotFound").to_string(),
             ));
@@ -164,15 +170,7 @@ impl BicepExtension for BicepExtensionService {
             )
         );
 
-        let mut dsc = DscManager::new();
-        let Some(resource) = dsc
-            .find_resource(&DiscoveryFilter::new(
-                &resource_type,
-                version.as_deref(),
-                None,
-            ))
-            .unwrap_or(None)
-        else {
+        let Some(resource) = self.find_resource(&resource_type, version.as_deref()).await else {
             return Err(Status::not_found(
                 t!("dscerror.resourceNotFound").to_string(),
             ));
@@ -219,15 +217,7 @@ impl BicepExtension for BicepExtensionService {
             )
         );
 
-        let mut dsc = DscManager::new();
-        let Some(resource) = dsc
-            .find_resource(&DiscoveryFilter::new(
-                &resource_type,
-                version.as_deref(),
-                None,
-            ))
-            .unwrap_or(None)
-        else {
+        let Some(resource) = self.find_resource(&resource_type, version.as_deref()).await else {
             return Err(Status::not_found(
                 t!("dscerror.resourceNotFound").to_string(),
             ));
@@ -291,7 +281,22 @@ async fn run_server(
     pipe: Option<String>,
     http: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let service = BicepExtensionService;
+    // Initialize DscManager and find all resources. If we don't do that
+    // upfront, the gRPC requests hit a race condition in the cache logic
+    // of `find_resource()`.
+    let mut dsc = DscManager::new();
+    /*
+    if let Err(err) = dsc.find_resources(
+        &[DiscoveryFilter::new("*", None, None)],
+        dsc_lib::progress::ProgressFormat::None,
+    ) {
+        tracing::error!("Failed to discover resources: {}", err);
+    }
+    */
+
+    let service = BicepExtensionService {
+        dsc_manager: Arc::new(RwLock::new(dsc)),
+    };
 
     #[cfg(unix)]
     if let Some(socket_path) = socket {
