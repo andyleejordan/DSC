@@ -3,7 +3,7 @@
 registry-auth = true
 
 [registries]
-POWERSHELL = { index = "sparse+https://pkgs.dev.azure.com/powershell/PowerShell/_packaging/powershell/Cargo/index/" }
+powershell = { index = "sparse+https://pkgs.dev.azure.com/powershell/PowerShell/_packaging/powershell/Cargo/index/" }
 
 [registry]
 global-credential-providers = ["cargo:token"]
@@ -38,7 +38,7 @@ rustflags = [
 
 # The following is only needed for release builds
 [source.crates-io]
-replace-with = "POWERSHELL"
+replace-with = "powershell"
 
 # Enable running `cargo xtask <command>`
 [alias]
